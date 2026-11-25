@@ -21,7 +21,17 @@ export function readCommand(body) {
   return { kind: 'text' };
 }
 
-export function createAgent({ mail, llm, jobs, store, config, now = () => new Date(), log = console }) {
+/** Thrown when a daily ceiling is reached: the message waits for tomorrow, untouched. */
+class OverBudget extends Error {}
+
+export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () => new Date(), log = console }) {
+  // Every Claude call counts against the day's ceiling, checked BEFORE the call.
+  const metered = (fn) => async (...args) => {
+    if (store.llmToday(now()) >= config.maxLlmCallsPerDay) throw new OverBudget('daily Claude ceiling reached');
+    store.countLlm(now());
+    return fn(...args);
+  };
+  const llm = { readProfile: metered(rawLlm.readProfile), rankJobs: metered(rawLlm.rankJobs), writeNote: metered(rawLlm.writeNote) };
   let me = null;
   let running = null;
   let again = false;
@@ -117,6 +127,8 @@ export function createAgent({ mail, llm, jobs, store, config, now = () => new Da
   async function handle(item) {
     const from = parseAddress(item.from);
     if (!from || from === me) return 'skip';
+    // Nothing is spent on a message that could not be answered today (no send left for them, or at all).
+    if (!canSend(from)) throw new OverBudget('send budget reached');
     const msg = await mail.getMessage(item.message_id);
     if (isAutomated(msg, from)) return 'skip';
     const body = String(msg.extracted_text ?? msg.text ?? msg.preview ?? '').trim();
@@ -150,6 +162,7 @@ export function createAgent({ mail, llm, jobs, store, config, now = () => new Da
         store.markProcessed(id);
         log.info('handled', id.slice(0, 12), what);
       } catch (e) {
+        if (e instanceof OverBudget) { log.warn('over budget, left for tomorrow', id.slice(0, 12), e.message); continue; }
         const tries = store.failed(id);
         log.error('failed', id.slice(0, 12), tries, String(e?.message ?? e).slice(0, 300));
         if (tries >= MAX_TRIES) {
@@ -189,6 +202,7 @@ export function createAgent({ mail, llm, jobs, store, config, now = () => new Da
         store.countSend(user.email, now());
         sent++;
       } catch (e) {
+        if (e instanceof OverBudget) break;
         log.error('digest failed', String(e?.message ?? e).slice(0, 300));
       }
     }

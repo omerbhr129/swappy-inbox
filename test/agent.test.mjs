@@ -151,6 +151,16 @@ test('the send budget holds, overall and per person', async () => {
   assert.equal(s.mail.sent.length, 2);
 });
 
+test('the Claude ceiling: past it, nothing is spent and the mail waits for tomorrow', async () => {
+  const inbox = Array.from({ length: 4 }, (_, i) => ({ message_id: `c${i}`, from: `p${i}@example.com`, extracted_text: 'design jobs' }));
+  const s = setup(inbox);
+  s.config.maxLlmCallsPerDay = 4; // two people: a read and a rank each
+  await s.agent.processInbox();
+  assert.equal(s.llm.calls.read + s.llm.calls.rank + s.llm.calls.note, 4);
+  assert.equal(s.mail.sent.length, 2);
+  assert.ok(!s.store.isProcessed('c3'), 'not answered, not dropped: tomorrow');
+});
+
 test('commands and addresses', () => {
   assert.deepEqual(readCommand('STOP'), { kind: 'stop' });
   assert.deepEqual(readCommand('Pause.'), { kind: 'pause' });

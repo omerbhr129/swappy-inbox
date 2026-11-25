@@ -42,6 +42,13 @@ export function createStore(dir) {
     /** One more failed try at a message; returns how many so far. */
     failed(id) { state.failures[id] = (state.failures[id] ?? 0) + 1; saveState(); return state.failures[id]; },
 
+    /** Claude calls today (the spending ceiling). */
+    llmToday: (now) => state.llm?.[dayKey(now)] ?? 0,
+    countLlm(now) {
+      const d = dayKey(now);
+      state.llm = { [d]: (state.llm?.[d] ?? 0) + 1 };
+      saveState();
+    },
     /** E-mails sent today, in all and to one person (AgentMail's daily allowance, and fairness). */
     sentToday: (now) => state.sends[dayKey(now)] ?? 0,
     sentTodayTo: (email, now) => state.perSender[`${dayKey(now)}:${email.toLowerCase()}`] ?? 0,

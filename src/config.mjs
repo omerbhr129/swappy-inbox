@@ -25,6 +25,8 @@ export function loadConfig(env = process.env) {
     siteBase: (env.SITE_BASE || 'https://swapplyjobs.com').replace(/\/+$/, ''),
     appUrl: 'https://apps.apple.com/app/apple-store/id6785090261?pt=128650812&ct=swappy-inbox&mt=8',
 
+    // A hard ceiling on Claude calls a day, whatever arrives: the bill can never run away.
+    maxLlmCallsPerDay: Number(env.MAX_LLM_CALLS_PER_DAY ?? 150),
     // AgentMail's free plan sends 100 e-mails a day; Swappy stays under it and keeps a share per person.
     maxSendsPerDay: Number(env.MAX_SENDS_PER_DAY ?? 90),
     maxRepliesPerSenderPerDay: Number(env.MAX_REPLIES_PER_SENDER ?? 12),
