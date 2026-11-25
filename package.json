@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node src/server.mjs",
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.14.0",
