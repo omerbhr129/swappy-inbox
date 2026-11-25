@@ -1,0 +1,13 @@
+# Wakes Swappy's Sprite once a morning so it sends the day's new matches. The Sprite sleeps between e-mails
+# (and is not billed), and a sleeping machine runs no timers, so the nudge comes from outside: one HTTP call.
+# /tick is safe to call by anyone: it sends nothing before 13:00 UTC and nothing twice a day to the same person.
+name: morning matches
+on:
+  schedule:
+    - cron: '5 13 * * *' # 8:05 am in New York
+  workflow_dispatch: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS -X POST --max-time 60 "${{ vars.SWAPPY_URL }}/tick"

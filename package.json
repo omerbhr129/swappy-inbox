@@ -1,0 +1,18 @@
+{
+  "name": "swappy-inbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Swappy: a job-hunting agent with its own email inbox, running on a Fly.io Sprite.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0",
+    "zod": "^4.6.7"
+  }
+}
