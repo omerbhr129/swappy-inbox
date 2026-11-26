@@ -193,6 +193,17 @@ test('the AgentMail calls: a message from its thread, a reply threaded by header
   assert.equal(await mail.label('<x=1@mail.gmail.com>', ['swappy-done']), null);
   assert.equal(calls.length, 2, 'no label call for an id the gateway refuses');
   await assert.rejects(mail.attachmentBytes('m', 'a'));
+
+  // With a read-only key for attachments, the PDF comes straight from AgentMail (never through the gateway).
+  const direct = [];
+  const withKey = createMail({ base: 'https://gw', inboxId: 'swappy@agentmail.to', attachmentKey: () => 'k1', fetchImpl: async (url, init) => {
+    direct.push({ url, auth: init?.headers?.authorization });
+    return url.startsWith('https://files/') ? new Response('%PDF') : new Response(JSON.stringify({ download_url: 'https://files/cv.pdf' }));
+  } });
+  assert.equal(withKey.canReadAttachments, true);
+  assert.equal(String(await withKey.attachmentBytes('<x=1@g>', 'a1')), '%PDF');
+  assert.equal(direct[0].url, 'https://api.agentmail.to/v0/inboxes/swappy%40agentmail.to/messages/%3Cx%3D1%40g%3E/attachments/a1');
+  assert.equal(direct[0].auth, 'Bearer k1');
 });
 
 test('commands and addresses', () => {

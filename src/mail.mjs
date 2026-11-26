@@ -1,13 +1,14 @@
 // Swappy's inbox, through AgentMail's API (https://docs.agentmail.to). On the Sprite the base URL is the
 // connector's gateway, which adds the API key; locally it is api.agentmail.to with AGENTMAIL_API_KEY.
 
-export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
+export function createMail({ base, key = null, inboxId, fetchImpl = fetch, attachmentKey = () => null, directBase = 'https://api.agentmail.to' }) {
   if (!inboxId) throw new Error('AGENTMAIL_INBOX_ID is not set');
   const headers = { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) };
   const inbox = `/v0/inboxes/${encodeURIComponent(inboxId)}`;
   // Through the Sprites gateway (no key here) AgentMail's attachment endpoints are not proxied, and a message's own
   // path is refused when its id holds "=" (most Gmail ids). So a message is read from its thread, a reply is a new
-  // message threaded by its headers, and attachments are read only with a direct key.
+  // message threaded by its headers, and attachments are read straight from AgentMail with `attachmentKey` (a
+  // read-only key for this inbox), when there is one.
   const viaGateway = !key;
 
   async function call(method, path, body) {
@@ -18,7 +19,7 @@ export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
   }
 
   return {
-    canReadAttachments: !viaGateway,
+    get canReadAttachments() { return !viaGateway || Boolean(attachmentKey()); },
     getInbox: () => call('GET', inbox),
     /** Newest messages first unless `ascending`; `after` is an ISO time. */
     listMessages({ after, limit = 50, ascending = true } = {}) {
@@ -34,10 +35,17 @@ export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
       if (!found) throw new Error('message not found in its thread');
       return found;
     },
-    /** The attachment's bytes (AgentMail answers with a signed, short-lived download URL). Direct key only. */
+    /** The attachment's bytes (AgentMail answers with a signed, short-lived download URL). */
     async attachmentBytes(messageId, attachmentId) {
-      if (viaGateway) throw new Error('attachments are not readable through the gateway');
-      const meta = await call('GET', `${inbox}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
+      const path = `${inbox}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`;
+      let meta;
+      if (viaGateway) {
+        const k = attachmentKey();
+        if (!k) throw new Error('attachments are not readable through the gateway');
+        const res = await fetchImpl(`${directBase}${path}`, { headers: { authorization: `Bearer ${k}` }, signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw new Error(`agentmail attachment → ${res.status}`);
+        meta = await res.json();
+      } else meta = await call('GET', path);
       if (!meta?.download_url || !/^https:\/\//.test(meta.download_url)) throw new Error('no download url');
       const res = await fetchImpl(meta.download_url, { signal: AbortSignal.timeout(30_000) });
       if (!res.ok) throw new Error(`attachment download ${res.status}`);

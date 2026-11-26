@@ -1,6 +1,9 @@
 // Everything Swappy reads from its environment. On the Sprite, the two providers are reached through Sprites
 // connectors: the gateway holds the API keys, so the Sprite never does (README: "Run it on a Sprite").
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 
@@ -19,6 +22,11 @@ export function loadConfig(env = process.env) {
     agentmailBase: (env.AGENTMAIL_BASE_URL || 'https://api.agentmail.to').replace(/\/+$/, ''),
     agentmailKey: env.AGENTMAIL_API_KEY || null,
     inboxId: env.AGENTMAIL_INBOX_ID || '',
+    // The gateway does not proxy attachments. To read attached résumés, a second AgentMail key (read-only, this inbox
+    // only) can sit in this file, used for nothing but downloading attachments. Read at each use; absent = no PDFs.
+    attachmentKey: () => {
+      try { return readFileSync(env.AGENTMAIL_KEY_FILE || join(homedir(), '.agentmail-key'), 'utf8').trim() || null; } catch { return null; }
+    },
 
     // The jobs: Swapply's public index of new US jobs (the same one swapplyjobs.com/jobs/search reads).
     postingsUrl: env.POSTINGS_URL || 'https://swapplyjobs.com/data/postings.json',

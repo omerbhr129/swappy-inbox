@@ -17,7 +17,7 @@ const config = loadConfig();
 const store = createStore(config.dataDir);
 const jobs = createJobs({ postingsUrl: config.postingsUrl, siteBase: config.siteBase });
 const llm = createLlm({ baseURL: config.anthropicBaseURL, apiKey: config.anthropicApiKey, model: config.model });
-const mail = createMail({ base: config.agentmailBase, key: config.agentmailKey, inboxId: config.inboxId });
+const mail = createMail({ base: config.agentmailBase, key: config.agentmailKey, inboxId: config.inboxId, attachmentKey: config.attachmentKey });
 const agent = createAgent({ mail, llm, jobs, store, config });
 
 const look = (why) => agent.processInbox().catch((e) => console.error('inbox pass failed', why, String(e?.message ?? e).slice(0, 300)));

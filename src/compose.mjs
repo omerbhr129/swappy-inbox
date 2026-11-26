@@ -18,7 +18,7 @@ export function matchesEmail({ name, picks, first, controls = true, notice = nul
   const care = first
     ? 'I’ll send new matches each morning. Reply PAUSE to stop them, or STOP and I’ll delete everything I keep about you. I keep a short summary of your résumé to find matches; your e-mails are read with Claude (Anthropic).'
     : 'Reply PAUSE to stop these, or STOP to delete everything I keep about you.';
-  const text = [hi, '', ...(notice ? [notice, ''] : []), intro, '', lines.join('\n\n'), '', how, controls ? care : '', '', SIGN, FOOT].filter((x) => x !== '').join('\n').replace(/\n(?=\d+\. )/g, '\n\n');
+  const text = [hi, notice, intro, lines.join('\n\n'), how, controls ? care : null, `${SIGN}\n${FOOT}`].filter(Boolean).join('\n\n');
   const items = picks.map((m, i) => `<li style="margin:0 0 14px"><a href="${esc(m.url)}" style="color:#1d4ed8;font-weight:600;text-decoration:none">${esc(m.job.title)}</a> — ${esc(m.job.company)} <span style="color:#6b7280">(${esc(m.job.location)})</span><br><span>${esc(m.why)}</span></li>`).join('');
   return {
     text,
@@ -45,7 +45,7 @@ export function plainEmail(...lines) {
 
 export const WELCOME = plainEmail(
   'Hi, I’m Swappy. I find open US jobs that fit you and e-mail them to you.',
-  'Send me your résumé (PDF) or just tell me what you’re looking for, like “remote product designer” or “nurse in Austin, TX”.',
+  'Tell me what you’re looking for, like “remote product designer” or “nurse in Austin, TX”, or send me your résumé.',
   'I’ll reply with the best matches, and send new ones every morning.',
 );
 export const ASK_ROLE = (missing) => plainEmail(
