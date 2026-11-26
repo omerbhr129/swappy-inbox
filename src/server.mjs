@@ -44,7 +44,8 @@ function serveFile(req, res, file, type) {
   head['content-length'] = end - start + 1;
   res.writeHead(status, head);
   if (req.method === 'HEAD') { res.end(); return; }
-  createReadStream(file, { start, end }).pipe(res);
+  // a read that fails mid-way (the file replaced or gone) ends this one response, never the server
+  createReadStream(file, { start, end }).on('error', () => res.destroy()).pipe(res);
 }
 
 const server = createServer((req, res) => {
