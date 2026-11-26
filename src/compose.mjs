@@ -17,13 +17,13 @@ export function matchesEmail({ name, picks, first, more = false, controls = true
   const intro = first ? `Here ${n === 1 ? 'is 1 open role' : `are ${n} open roles`} that fit what you sent me:`
     : more ? `Thanks! With that, here ${n === 1 ? 'is 1 more role' : `are ${n} more roles`} that fit:`
     : `${n === 1 ? '1 new role' : `${n} new roles`} for you today:`;
-  const lines = picks.map((m, i) => `${i + 1}. ${m.job.title} — ${m.job.company} (${m.job.location})\n   ${m.why}\n   ${m.url}`);
+  const lines = picks.map((m, i) => `${i + 1}. ${m.job.title} — ${m.job.company} · ${m.job.location}\n   ${m.why}\n   ${m.url}`);
   const how = 'Reply with a number (like "2") and I’ll write you a short intro note for that job, using only what’s in your résumé.';
   const care = first
     ? 'I’ll send new matches each morning. Reply PAUSE to stop them, or STOP and I’ll delete everything I keep about you. I keep a short summary of your résumé to find matches; your e-mails are read with Claude (Anthropic).'
     : 'Reply PAUSE to stop these, or STOP to delete everything I keep about you.';
   const text = [hi, notice, intro, lines.join('\n\n'), how, controls ? care : null, `${SIGN}\n${FOOT}`].filter(Boolean).join('\n\n');
-  const items = picks.map((m, i) => `<li style="margin:0 0 14px"><a href="${esc(m.url)}" style="color:#1d4ed8;font-weight:600;text-decoration:none">${esc(m.job.title)}</a> — ${esc(m.job.company)} <span style="color:#6b7280">(${esc(m.job.location)})</span><br><span>${esc(m.why)}</span></li>`).join('');
+  const items = picks.map((m, i) => `<li style="margin:0 0 14px"><a href="${esc(m.url)}" style="color:#1d4ed8;font-weight:600;text-decoration:none">${esc(m.job.title)}</a> — ${esc(m.job.company)} <span style="color:#6b7280">· ${esc(m.job.location)}</span><br><span>${esc(m.why)}</span></li>`).join('');
   return {
     text,
     html: html([p(esc(hi)), notice ? muted(esc(notice)) : '', p(esc(intro)), `<ol style="padding-left:20px;margin:0 0 14px">${items}</ol>`, p(esc(how)), controls ? muted(esc(care)) : '', p(SIGN), muted(esc(FOOT))]),
