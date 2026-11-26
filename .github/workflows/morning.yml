@@ -1,13 +1,17 @@
-# Wakes Swappy's Sprite once a morning so it sends the day's new matches. The Sprite sleeps between e-mails
-# (and is not billed), and a sleeping machine runs no timers, so the nudge comes from outside: one HTTP call.
-# /tick is safe to call by anyone: it sends nothing before 13:00 UTC and nothing twice a day to the same person.
-name: morning matches
+# Wakes Swappy's Sprite from outside. The Sprite sleeps between e-mails (and is not billed), and a sleeping
+# machine runs no timers, so the nudges come from here: one HTTP call each.
+#  - 13:05 UTC (8:05 am in New York): the morning matches.
+#  - every 20 minutes: a safety net that reads the inbox, in case AgentMail's "new mail" call was missed.
+# /tick is safe to call by anyone: it sends no morning e-mail before 13:00 UTC and never two the same day to one
+# person, and what it answers always comes from the inbox itself, read through the authenticated API.
+name: wake swappy
 on:
   schedule:
-    - cron: '5 13 * * *' # 8:05 am in New York
+    - cron: '5 13 * * *'
+    - cron: '*/20 * * * *'
   workflow_dispatch: {}
 jobs:
   tick:
     runs-on: ubuntu-latest
     steps:
-      - run: curl -fsS -X POST --max-time 60 "${{ vars.SWAPPY_URL }}/tick"
+      - run: curl -fsS -X POST --max-time 90 "${{ vars.SWAPPY_URL }}/tick"
