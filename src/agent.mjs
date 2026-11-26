@@ -112,7 +112,7 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
     next.lastDigest = dayKey(now());
     store.saveUser(next);
     const notice = unread ? c.CANT_OPEN : otherFile ? c.NOT_PDF : null;
-    await reply(msg, from, c.matchesEmail({ name: next.profile.name, picks, first, notice }));
+    await reply(msg, from, c.matchesEmail({ name: next.profile.name, picks, first, more: !first, notice }));
   }
 
   async function onPick(msg, from, user, n) {

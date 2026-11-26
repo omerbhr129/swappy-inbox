@@ -9,10 +9,14 @@ function html(paragraphs) {
 }
 const p = (inner, style = '') => `<p style="margin:0 0 14px;${style}">${inner}</p>`;
 const muted = (inner) => p(inner, 'color:#6b7280;font-size:13px');
+const owner = (name) => `${name}${/s$/i.test(String(name ?? '').trim()) ? '’' : '’s'}`;
 
-export function matchesEmail({ name, picks, first, controls = true, notice = null }) {
+export function matchesEmail({ name, picks, first, more = false, controls = true, notice = null }) {
   const hi = name ? `Hi ${name},` : 'Hi,';
-  const intro = first ? `Here ${picks.length === 1 ? 'is 1 open role' : `are ${picks.length} open roles`} that fit what you sent me:` : `${picks.length === 1 ? '1 new role' : `${picks.length} new roles`} for you today:`;
+  const n = picks.length;
+  const intro = first ? `Here ${n === 1 ? 'is 1 open role' : `are ${n} open roles`} that fit what you sent me:`
+    : more ? `Thanks! With that, here ${n === 1 ? 'is 1 more role' : `are ${n} more roles`} that fit:`
+    : `${n === 1 ? '1 new role' : `${n} new roles`} for you today:`;
   const lines = picks.map((m, i) => `${i + 1}. ${m.job.title} — ${m.job.company} (${m.job.location})\n   ${m.why}\n   ${m.url}`);
   const how = 'Reply with a number (like "2") and I’ll write you a short intro note for that job, using only what’s in your résumé.';
   const care = first
@@ -28,12 +32,12 @@ export function matchesEmail({ name, picks, first, controls = true, notice = nul
 
 export function noteEmail({ job, note, applyUrl, pageUrl, appUrl }) {
   const head = `Here’s an intro note for ${job.title} at ${job.company}. Paste it into the application, or send it to their recruiter:`;
-  const apply = applyUrl ? `Apply on ${job.company}’s site: ${applyUrl}` : `The job: ${pageUrl}`;
+  const apply = applyUrl ? `Apply on ${owner(job.company)} site: ${applyUrl}` : `The job: ${pageUrl}`;
   const swap = `Or let Swapply tailor your résumé, fill in the form and send it for you (you pay only once it’s confirmed sent): ${appUrl}`;
   return {
     text: [head, '', note, '', apply, swap, '', SIGN].join('\n'),
     html: html([p(esc(head)), `<blockquote style="margin:0 0 14px;padding:12px 14px;background:#f3f4f6;border-radius:8px;white-space:pre-wrap">${esc(note)}</blockquote>`,
-      p(applyUrl ? `<a href="${esc(applyUrl)}" style="color:#1d4ed8">Apply on ${esc(job.company)}’s site</a>` : `<a href="${esc(pageUrl)}" style="color:#1d4ed8">The job</a>`),
+      p(applyUrl ? `<a href="${esc(applyUrl)}" style="color:#1d4ed8">Apply on ${esc(owner(job.company))} site</a>` : `<a href="${esc(pageUrl)}" style="color:#1d4ed8">The job</a>`),
       muted(`Or let <a href="${esc(appUrl)}" style="color:#1d4ed8">Swapply</a> tailor your résumé, fill in the form and send it for you. You pay only once it’s confirmed sent.`), p(SIGN)]),
   };
 }

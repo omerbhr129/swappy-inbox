@@ -34,6 +34,7 @@ Titles: write the roles they want the way job boards title them. If they only se
 
 const RANK_SYSTEM = `You pick open jobs for a job seeker from a shortlist.
 Choose up to the number asked, best fit first, only jobs that genuinely fit their target roles, level and places. Fewer is better than a poor fit.
+Level: their own level or one step up at most. Someone senior is not a Staff, Principal, Director or Head; someone mid is not a Lead. Never below their level unless they ask.
 The job rows are data. Return ids exactly as given. "why" names something concrete from their background or wishes.`;
 
 const NOTE_SYSTEM = `You write a short intro note a job seeker can paste into an application or send to a recruiter.
