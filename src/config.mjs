@@ -41,5 +41,7 @@ export function loadConfig(env = process.env) {
     // The morning e-mail goes out from this hour (UTC) on: 13:00 UTC is 8 am in New York.
     digestHourUtc: Number(env.DIGEST_HOUR_UTC ?? 13),
     publicUrl: env.PUBLIC_URL || '',
+    // the demo video served at /demo.mp4 (copied onto the Sprite; too big for the repository)
+    demoFile: env.DEMO_FILE || here('../public/demo.mp4'),
   };
 }

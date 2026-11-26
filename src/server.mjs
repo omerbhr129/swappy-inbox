@@ -3,8 +3,10 @@
 //   POST /tick   the daily nudge (a scheduled GitHub Action): send the morning matches, then look at the inbox.
 //                Anyone may call it; it does nothing twice a day for the same person.
 //   GET  /       what Swappy is and its address.
+//   GET  /demo.mp4  the demo video, if public/demo.mp4 is on the Sprite (not in the repository).
 // A request to the URL wakes the Sprite; between e-mails it sleeps and costs nothing.
 import { createServer } from 'node:http';
+import { createReadStream, statSync } from 'node:fs';
 import { loadConfig } from './config.mjs';
 import { createStore } from './store.mjs';
 import { createJobs } from './jobs.mjs';
@@ -25,6 +27,26 @@ const look = (why) => agent.processInbox().catch((e) => console.error('inbox pas
 let address = config.inboxId;
 mail.getInbox().then((i) => { if (i?.email) address = i.email; }).catch(() => {});
 
+/** A file with byte ranges (browsers seek a video with them); nothing but the one configured path is ever read. */
+function serveFile(req, res, file, type) {
+  let size;
+  try { size = statSync(file).size; } catch { res.writeHead(404, { 'content-type': 'text/plain' }); res.end('not found'); return; }
+  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+  let start = 0, end = size - 1, status = 200;
+  if (m && (m[1] || m[2])) {
+    start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start > end || start >= size) { res.writeHead(416, { 'content-range': `bytes */${size}` }); res.end(); return; }
+    status = 206;
+    head['content-range'] = `bytes ${start}-${end}/${size}`;
+  }
+  head['content-length'] = end - start + 1;
+  res.writeHead(status, head);
+  if (req.method === 'HEAD') { res.end(); return; }
+  createReadStream(file, { start, end }).pipe(res);
+}
+
 const server = createServer((req, res) => {
   const path = new URL(req.url ?? '/', 'http://x').pathname;
   req.resume(); // the body is never needed
@@ -39,6 +61,7 @@ const server = createServer((req, res) => {
     return;
   }
   if (req.method === 'GET' && path === '/health') { send(200, 'ok'); return; }
+  if ((req.method === 'GET' || req.method === 'HEAD') && path === '/demo.mp4') { serveFile(req, res, config.demoFile, 'video/mp4'); return; }
   if (req.method === 'GET' && path === '/') { send(200, landingPage({ address }), 'text/html; charset=utf-8'); return; }
   send(404, 'not found');
 });
