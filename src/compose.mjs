@@ -10,7 +10,7 @@ function html(paragraphs) {
 const p = (inner, style = '') => `<p style="margin:0 0 14px;${style}">${inner}</p>`;
 const muted = (inner) => p(inner, 'color:#6b7280;font-size:13px');
 
-export function matchesEmail({ name, picks, first, controls = true }) {
+export function matchesEmail({ name, picks, first, controls = true, notice = null }) {
   const hi = name ? `Hi ${name},` : 'Hi,';
   const intro = first ? `Here ${picks.length === 1 ? 'is 1 open role' : `are ${picks.length} open roles`} that fit what you sent me:` : `${picks.length === 1 ? '1 new role' : `${picks.length} new roles`} for you today:`;
   const lines = picks.map((m, i) => `${i + 1}. ${m.job.title} — ${m.job.company} (${m.job.location})\n   ${m.why}\n   ${m.url}`);
@@ -18,11 +18,11 @@ export function matchesEmail({ name, picks, first, controls = true }) {
   const care = first
     ? 'I’ll send new matches each morning. Reply PAUSE to stop them, or STOP and I’ll delete everything I keep about you. I keep a short summary of your résumé to find matches; your e-mails are read with Claude (Anthropic).'
     : 'Reply PAUSE to stop these, or STOP to delete everything I keep about you.';
-  const text = [hi, '', intro, '', lines.join('\n\n'), '', how, controls ? care : '', '', SIGN, FOOT].filter((x) => x !== '').join('\n').replace(/\n(?=\d+\. )/g, '\n\n');
+  const text = [hi, '', ...(notice ? [notice, ''] : []), intro, '', lines.join('\n\n'), '', how, controls ? care : '', '', SIGN, FOOT].filter((x) => x !== '').join('\n').replace(/\n(?=\d+\. )/g, '\n\n');
   const items = picks.map((m, i) => `<li style="margin:0 0 14px"><a href="${esc(m.url)}" style="color:#1d4ed8;font-weight:600;text-decoration:none">${esc(m.job.title)}</a> — ${esc(m.job.company)} <span style="color:#6b7280">(${esc(m.job.location)})</span><br><span>${esc(m.why)}</span></li>`).join('');
   return {
     text,
-    html: html([p(esc(hi)), p(esc(intro)), `<ol style="padding-left:20px;margin:0 0 14px">${items}</ol>`, p(esc(how)), controls ? muted(esc(care)) : '', p(SIGN), muted(esc(FOOT))]),
+    html: html([p(esc(hi)), notice ? muted(esc(notice)) : '', p(esc(intro)), `<ol style="padding-left:20px;margin:0 0 14px">${items}</ol>`, p(esc(how)), controls ? muted(esc(care)) : '', p(SIGN), muted(esc(FOOT))]),
   };
 }
 
@@ -57,8 +57,10 @@ export const NO_MATCHES = plainEmail(
   'I’ll look again every morning and write when something does. You can also reply with a broader role or more places.',
 );
 export const NEED_RESUME = plainEmail(
-  'To write a note that sounds like you, I need your background: reply with your résumé as a PDF, or paste it into the e-mail.',
+  'To write a note that sounds like you, I need your background: paste your résumé’s text into a reply.',
 );
+export const CANT_OPEN = 'I can’t open attachments yet, so I matched from your e-mail. Paste your résumé’s text into a reply and I’ll sharpen these and write intro notes in your voice.';
+export const CANT_OPEN_ASK = 'Thanks! I can’t open attachments yet. Reply with the role you want and where (a city, or remote), or paste your résumé’s text, and I’ll send matches right away.';
 export const NOT_PDF = 'I can read résumés sent as PDF. If yours is a Word file, export it as PDF or paste the text into your reply.';
 export const STOPPED = plainEmail('Done. I deleted everything I kept about you, and I won’t write again unless you e-mail me.');
 export const PAUSED = plainEmail('Paused. No more morning e-mails. Reply RESUME whenever you want them back.');

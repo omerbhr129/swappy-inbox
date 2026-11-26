@@ -5,6 +5,10 @@ export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
   if (!inboxId) throw new Error('AGENTMAIL_INBOX_ID is not set');
   const headers = { 'content-type': 'application/json', ...(key ? { authorization: `Bearer ${key}` } : {}) };
   const inbox = `/v0/inboxes/${encodeURIComponent(inboxId)}`;
+  // Through the Sprites gateway (no key here) AgentMail's attachment endpoints are not proxied, and a message's own
+  // path is refused when its id holds "=" (most Gmail ids). So a message is read from its thread, a reply is a new
+  // message threaded by its headers, and attachments are read only with a direct key.
+  const viaGateway = !key;
 
   async function call(method, path, body) {
     const res = await fetchImpl(`${base}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(30_000) });
@@ -14,6 +18,7 @@ export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
   }
 
   return {
+    canReadAttachments: !viaGateway,
     getInbox: () => call('GET', inbox),
     /** Newest messages first unless `ascending`; `after` is an ISO time. */
     listMessages({ after, limit = 50, ascending = true } = {}) {
@@ -21,19 +26,40 @@ export function createMail({ base, key = null, inboxId, fetchImpl = fetch }) {
       if (after) q.set('after', after);
       return call('GET', `${inbox}/messages?${q}`);
     },
-    getMessage: (id) => call('GET', `${inbox}/messages/${encodeURIComponent(id)}`),
-    /** The attachment's bytes (AgentMail answers with a signed, short-lived download URL). */
+    /** One message in full (its text and attachments list), from the list item's thread. */
+    async getMessage(item) {
+      if (!item?.thread_id) return call('GET', `${inbox}/messages/${encodeURIComponent(item.message_id)}`);
+      const thread = await call('GET', `${inbox}/threads/${encodeURIComponent(item.thread_id)}`);
+      const found = (thread?.messages ?? []).find((m) => m.message_id === item.message_id);
+      if (!found) throw new Error('message not found in its thread');
+      return found;
+    },
+    /** The attachment's bytes (AgentMail answers with a signed, short-lived download URL). Direct key only. */
     async attachmentBytes(messageId, attachmentId) {
+      if (viaGateway) throw new Error('attachments are not readable through the gateway');
       const meta = await call('GET', `${inbox}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
       if (!meta?.download_url || !/^https:\/\//.test(meta.download_url)) throw new Error('no download url');
       const res = await fetchImpl(meta.download_url, { signal: AbortSignal.timeout(30_000) });
       if (!res.ok) throw new Error(`attachment download ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     },
-    reply: (messageId, { text, html, labels }) => call('POST', `${inbox}/messages/${encodeURIComponent(messageId)}/reply`, { text, html, labels }),
+    /** A reply to `msg`: a new message to `to`, in the same conversation (Re: subject, In-Reply-To, References). */
+    reply(msg, to, { text, html, labels }) {
+      const h = Object.fromEntries(Object.entries(msg?.headers ?? {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
+      const id = String(msg?.message_id ?? '');
+      const refs = `${h.references ?? ''} ${id}`.trim().split(/\s+/).slice(-10).join(' ');
+      const subject = String(msg?.subject ?? '').trim() || 'Your job search';
+      return call('POST', `${inbox}/messages/send`, {
+        to: [to], subject: /^re:/i.test(subject) ? subject : `Re: ${subject}`, text, html, labels,
+        ...(id ? { headers: { 'In-Reply-To': id, References: refs } } : {}),
+      });
+    },
     send: ({ to, subject, text, html, labels }) => call('POST', `${inbox}/messages/send`, { to, subject, text, html, labels }),
-    label: (messageId, add = [], remove = []) => call('PATCH', `${inbox}/messages/${encodeURIComponent(messageId)}`, { add_labels: add, remove_labels: remove }),
-    createWebhook: (url) => call('POST', `${inbox}/webhooks`, { url, event_types: ['message.received'] }),
+    /** Labels on a received message (bookkeeping only: what was handled is also kept on the Sprite's disk). */
+    async label(messageId, add = [], remove = []) {
+      if (viaGateway && /=/.test(messageId)) return null;
+      return call('PATCH', `${inbox}/messages/${encodeURIComponent(messageId)}`, { add_labels: add, remove_labels: remove });
+    },
   };
 }
 

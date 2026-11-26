@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAgent, readCommand } from '../src/agent.mjs';
 import { createStore } from '../src/store.mjs';
-import { isAutomated, parseAddress } from '../src/mail.mjs';
+import { createMail, isAutomated, parseAddress } from '../src/mail.mjs';
 import { placeFit, readPostings, shortlist } from '../src/jobs.mjs';
 import { loadConfig } from '../src/config.mjs';
 
@@ -19,16 +19,16 @@ const POSTINGS = { jobs: [
   ['Design Intern', 'Zeta', 'New York, NY', 0, 'g', '2026-11-25', 'zeta-design-intern-6'],
 ] };
 
-function fakeMail(inbox) {
+function fakeMail(inbox, { canReadAttachments = true } = {}) {
   const sent = [];
   const labels = [];
   return {
-    sent, labels, inbox,
+    sent, labels, inbox, canReadAttachments, attachmentReads: 0,
     getInbox: async () => ({ email: 'swappy@agentmail.to' }),
     listMessages: async () => ({ messages: inbox.map((m) => ({ message_id: m.message_id, from: m.from, labels: m.labels ?? ['received', 'unread'] })) }),
-    getMessage: async (id) => inbox.find((m) => m.message_id === id),
-    attachmentBytes: async () => Buffer.from('%PDF-1.4 fake'),
-    reply: async (id, body) => { sent.push({ kind: 'reply', id, ...body }); return { message_id: `r-${id}` }; },
+    getMessage: async (item) => inbox.find((m) => m.message_id === item.message_id),
+    async attachmentBytes() { this.attachmentReads++; return Buffer.from('%PDF-1.4 fake'); },
+    reply: async (msg, to, body) => { sent.push({ kind: 'reply', id: msg.message_id, to, ...body }); return { message_id: `r-${msg.message_id}` }; },
     send: async (body) => { sent.push({ kind: 'send', ...body }); return { message_id: 'd1' }; },
     label: async (id, add, remove) => { labels.push({ id, add, remove }); },
   };
@@ -49,10 +49,10 @@ const DESIGNER = {
   locations: ['New York, NY'], remote: 'remote_ok', resume_facts: 'Product designer at Foo 2021-2025; Figma.', missing: null,
 };
 
-function setup(inbox, profile = DESIGNER, at = '2026-11-25T15:00:00Z') {
+function setup(inbox, profile = DESIGNER, at = '2026-11-25T15:00:00Z', mailOptions = {}) {
   const config = { ...loadConfig({}), dataDir: mkdtempSync(join(tmpdir(), 'swappy-')), inboxId: 'swappy@agentmail.to' };
   const store = createStore(config.dataDir);
-  const mail = fakeMail(inbox);
+  const mail = fakeMail(inbox, mailOptions);
   const llm = fakeLlm(profile);
   const all = readPostings(POSTINGS);
   const jobs = {
@@ -159,6 +159,40 @@ test('the Claude ceiling: past it, nothing is spent and the mail waits for tomor
   assert.equal(s.llm.calls.read + s.llm.calls.rank + s.llm.calls.note, 4);
   assert.equal(s.mail.sent.length, 2);
   assert.ok(!s.store.isProcessed('c3'), 'not answered, not dropped: tomorrow');
+});
+
+test('through the gateway an attached résumé cannot be opened: Swappy says so and matches from the e-mail', async () => {
+  const inbox = [{ message_id: 'g1', from: 'dana@example.com', subject: 'jobs', extracted_text: 'Product designer, NYC or remote', attachments: [{ attachment_id: 'a1', filename: 'cv.pdf', content_type: 'application/pdf', size: 1000 }] }];
+  const { agent, mail, llm } = setup(inbox, DESIGNER, '2026-11-25T15:00:00Z', { canReadAttachments: false });
+  await agent.processInbox();
+  assert.equal(mail.attachmentReads, 0);
+  assert.equal(llm.calls.lastPdf, null);
+  assert.equal(mail.sent.length, 1);
+  assert.match(mail.sent[0].text, /can’t open attachments yet/);
+  assert.match(mail.sent[0].text, /1\. /);
+});
+
+test('the AgentMail calls: a message from its thread, a reply threaded by headers, no label path with "="', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null });
+    const body = url.includes('/threads/') ? { messages: [{ message_id: '<x=1@mail.gmail.com>', subject: 'Hello', headers: { References: '<p@q>' }, extracted_text: 'hi' }] } : { ok: true };
+    return new Response(JSON.stringify(body), { status: 200 });
+  };
+  const mail = createMail({ base: 'https://gw', inboxId: 'swappy@agentmail.to', fetchImpl });
+  assert.equal(mail.canReadAttachments, false);
+  const msg = await mail.getMessage({ message_id: '<x=1@mail.gmail.com>', thread_id: 't1' });
+  assert.equal(msg.extracted_text, 'hi');
+  assert.equal(calls[0].url, 'https://gw/v0/inboxes/swappy%40agentmail.to/threads/t1');
+  await mail.reply(msg, 'dana@example.com', { text: 'yo', html: '<p>yo</p>', labels: ['swappy-reply'] });
+  const sent = calls[1];
+  assert.equal(sent.url, 'https://gw/v0/inboxes/swappy%40agentmail.to/messages/send');
+  assert.deepEqual(sent.body.to, ['dana@example.com']);
+  assert.equal(sent.body.subject, 'Re: Hello');
+  assert.deepEqual(sent.body.headers, { 'In-Reply-To': '<x=1@mail.gmail.com>', References: '<p@q> <x=1@mail.gmail.com>' });
+  assert.equal(await mail.label('<x=1@mail.gmail.com>', ['swappy-done']), null);
+  assert.equal(calls.length, 2, 'no label call for an id the gateway refuses');
+  await assert.rejects(mail.attachmentBytes('m', 'a'));
 });
 
 test('commands and addresses', () => {

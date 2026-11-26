@@ -1,9 +1,10 @@
 // One-time setup, run ON THE SPRITE (the connectors' gateway only answers calls from a Sprite):
 //   node scripts/setup.mjs                 lists the connectors and their gateway URLs
 //   node scripts/setup.mjs inbox           creates Swappy's AgentMail inbox (swappy@agentmail.to, or the next free name)
-//   node scripts/setup.mjs webhook <url>   points the inbox's "message received" webhook at <url>/hook
+//   node scripts/setup.mjs check           reads the inbox through the connector (who the key is, the newest mail)
+// The "message received" webhook is made in AgentMail's console (the gateway does not proxy webhook admin):
+// Webhooks → Add endpoint → https://<sprite-url>/hook, event message.received. Its body is never trusted.
 import { loadConfig } from '../src/config.mjs';
-import { createMail } from '../src/mail.mjs';
 
 const [cmd, arg] = process.argv.slice(2);
 const config = loadConfig();
@@ -25,11 +26,12 @@ if (cmd === 'inbox') {
   process.exit(1);
 }
 
-if (cmd === 'webhook') {
-  if (!arg || !/^https:\/\//.test(arg)) { console.error('usage: node scripts/setup.mjs webhook https://<sprite-url>'); process.exit(1); }
-  const mail = createMail({ base: config.agentmailBase, key: config.agentmailKey, inboxId: config.inboxId });
-  const hook = await mail.createWebhook(`${arg.replace(/\/+$/, '')}/hook`);
-  console.log('webhook', hook.webhook_id, '→', hook.url, '(its signing secret is not needed: Swappy never trusts the body)');
+if (cmd === 'check') {
+  const headers = config.agentmailKey ? { authorization: `Bearer ${config.agentmailKey}` } : {};
+  const me = await fetch(`${config.agentmailBase}/v0/auth/me`, { headers });
+  console.log('key', me.status, (await me.text()).slice(0, 300));
+  const list = await fetch(`${config.agentmailBase}/v0/inboxes/${encodeURIComponent(config.inboxId)}/messages?limit=3`, { headers });
+  console.log('messages', list.status, (await list.text()).slice(0, 300));
   process.exit(0);
 }
 

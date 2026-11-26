@@ -41,9 +41,9 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
 
   const canSend = (to) => store.sentToday(now()) < config.maxSendsPerDay && store.sentTodayTo(to, now()) < config.maxRepliesPerSenderPerDay;
 
-  async function reply(messageId, to, body, labels = ['swappy-reply']) {
+  async function reply(msg, to, body, labels = ['swappy-reply']) {
     if (!canSend(to)) { log.warn('send budget reached; not answering', to.replace(/(.).*@/, '$1…@')); return false; }
-    await mail.reply(messageId, { ...body, labels });
+    await mail.reply(msg, to, { ...body, labels });
     store.countSend(to, now());
     return true;
   }
@@ -73,7 +73,9 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
   async function onProfile(msg, from, user, body) {
     const pdf = (msg.attachments ?? []).find((a) => (a.content_type === 'application/pdf' || /\.pdf$/i.test(a.filename ?? '')) && a.size < 15_000_000);
     const otherFile = !pdf && (msg.attachments ?? []).some((a) => a.content_disposition !== 'inline' && /\.(docx?|pages|rtf|odt)$/i.test(a.filename ?? ''));
-    const pdfBase64 = pdf ? (await mail.attachmentBytes(msg.message_id, pdf.attachment_id)).toString('base64') : null;
+    // Through the Sprites gateway attachments cannot be opened: Swappy says so and works from the e-mail's text.
+    const unread = Boolean(pdf) && !mail.canReadAttachments;
+    const pdfBase64 = pdf && !unread ? (await mail.attachmentBytes(msg.message_id, pdf.attachment_id)).toString('base64') : null;
     const profile = await llm.readProfile({ emailText: `Subject: ${msg.subject ?? ''}\n\n${body}`, pdfBase64, saved: user?.profile ?? null });
 
     if (!profile.is_job_search && !user) {
@@ -81,7 +83,7 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
       const known = store.getUser(from);
       if (known?.welcomed) return;
       store.saveUser({ email: from, welcomed: true, active: false, created: now().toISOString() });
-      await reply(msg.message_id, from, c.WELCOME);
+      await reply(msg, from, c.WELCOME);
       return;
     }
     const next = {
@@ -95,7 +97,7 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
     };
     if (!next.profile.target_titles?.length) {
       store.saveUser(next);
-      await reply(msg.message_id, from, otherFile ? c.plainEmail(c.NOT_PDF) : c.ASK_ROLE(profile.missing));
+      await reply(msg, from, unread ? c.plainEmail(c.CANT_OPEN_ASK) : otherFile ? c.plainEmail(c.NOT_PDF) : c.ASK_ROLE(profile.missing));
       return;
     }
     const first = !user?.lastList;
@@ -103,25 +105,24 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
     if (!picks.length) {
       next.lastDigest = dayKey(now());
       store.saveUser(next);
-      await reply(msg.message_id, from, c.NO_MATCHES);
+      await reply(msg, from, c.NO_MATCHES);
       return;
     }
     remember(next, picks);
     next.lastDigest = dayKey(now());
     store.saveUser(next);
-    const body2 = c.matchesEmail({ name: next.profile.name, picks, first });
-    if (otherFile) body2.text = `${c.NOT_PDF}\n\n${body2.text}`;
-    await reply(msg.message_id, from, body2);
+    const notice = unread ? c.CANT_OPEN : otherFile ? c.NOT_PDF : null;
+    await reply(msg, from, c.matchesEmail({ name: next.profile.name, picks, first, notice }));
   }
 
   async function onPick(msg, from, user, n) {
     const chosen = user.lastList?.[n - 1];
     if (!chosen) return onProfile(msg, from, user, String(n));
-    if (!user.resume_facts) { await reply(msg.message_id, from, c.NEED_RESUME); return; }
+    if (!user.resume_facts) { await reply(msg, from, c.NEED_RESUME); return; }
     const job = jobs.byId(chosen.id) ?? chosen;
     const { description, applyUrl } = await jobs.details(chosen.id);
     const note = await llm.writeNote({ facts: user.resume_facts, profile: user.profile ?? {}, job, description });
-    await reply(msg.message_id, from, c.noteEmail({ job, note, applyUrl, pageUrl: jobs.pageUrl(chosen.id), appUrl: config.appUrl }), ['swappy-note']);
+    await reply(msg, from, c.noteEmail({ job, note, applyUrl, pageUrl: jobs.pageUrl(chosen.id), appUrl: config.appUrl }), ['swappy-note']);
   }
 
   async function handle(item) {
@@ -129,7 +130,7 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
     if (!from || from === me) return 'skip';
     // Nothing is spent on a message that could not be answered today (no send left for them, or at all).
     if (!canSend(from)) throw new OverBudget('send budget reached');
-    const msg = await mail.getMessage(item.message_id);
+    const msg = await mail.getMessage(item);
     if (isAutomated(msg, from)) return 'skip';
     const body = String(msg.extracted_text ?? msg.text ?? msg.preview ?? '').trim();
     const user = store.getUser(from);
@@ -137,11 +138,11 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
     if (cmd.kind === 'stop') {
       const had = Boolean(user);
       store.deleteUser(from);
-      if (had) await reply(msg.message_id, from, c.STOPPED);
+      if (had) await reply(msg, from, c.STOPPED);
       return 'stop';
     }
-    if (cmd.kind === 'pause' && user) { store.saveUser({ ...user, paused: true }); await reply(msg.message_id, from, c.PAUSED); return 'pause'; }
-    if (cmd.kind === 'resume' && user) { store.saveUser({ ...user, paused: false, active: true }); await reply(msg.message_id, from, c.RESUMED); return 'resume'; }
+    if (cmd.kind === 'pause' && user) { store.saveUser({ ...user, paused: true }); await reply(msg, from, c.PAUSED); return 'pause'; }
+    if (cmd.kind === 'resume' && user) { store.saveUser({ ...user, paused: false, active: true }); await reply(msg, from, c.RESUMED); return 'resume'; }
     if (cmd.kind === 'pick' && user?.lastList?.length) { await onPick(msg, from, user, cmd.n); return 'note'; }
     await onProfile(msg, from, user?.profile ? user : null, body);
     return 'profile';
@@ -167,7 +168,7 @@ export function createAgent({ mail, llm: rawLlm, jobs, store, config, now = () =
         log.error('failed', id.slice(0, 12), tries, String(e?.message ?? e).slice(0, 300));
         if (tries >= MAX_TRIES) {
           const from = parseAddress(item.from);
-          if (from && from !== me) await reply(id, from, c.OOPS).catch(() => {});
+          if (from && from !== me) await reply(item, from, c.OOPS).catch(() => {});
           store.markProcessed(id);
         }
       }
