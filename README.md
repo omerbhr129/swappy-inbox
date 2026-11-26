@@ -1,7 +1,7 @@
 # Swappy — a job hunter in your inbox
 
 **Try it: e-mail [swappy@agentmail.to](mailto:swappy@agentmail.to)** with your résumé attached, or one line like
-*"remote product designer"* or *"backend engineer in Austin, TX"*.
+*"remote product designer"* or *"backend engineer in Austin, TX"*. **Demo (34 s):** [swappy-buufw.sprites.app/demo.mp4](https://swappy-buufw.sprites.app/demo.mp4)
 
 Swappy replies in the same thread with the five open US jobs that fit you best, each with a reason taken from your
 background. Reply with a number and it writes you a short intro note for that job, using only what is in your
