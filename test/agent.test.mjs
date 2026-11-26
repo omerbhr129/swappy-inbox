@@ -230,4 +230,10 @@ test('the shortlist: title, place, level, remote', () => {
   assert.equal(remoteOnly[0].id, 'acme-senior-product-designer-1', 'the full title match first');
   assert.equal(placeFit({ location: 'Austin, TX', remote: false }, { locations: ['TX'] }), 'match');
   assert.equal(shortlist(jobs, { ...DESIGNER, target_titles: [] }).length, 0);
+
+  // a level word is not the job: a senior designer's list has no "Senior Product Manager"
+  const more = readPostings({ jobs: [...POSTINGS.jobs, ['Senior Product Manager', 'Eta', 'Remote (US)', 1, 'g', '2026-11-25', 'eta-senior-product-manager-7']] });
+  const senior = shortlist(more, { ...DESIGNER, target_titles: ['Senior Product Designer', 'Senior UX Designer'], seniority: 'senior' }).map((j) => j.id);
+  assert.ok(!senior.includes('eta-senior-product-manager-7'), 'shares "senior product", not the job');
+  assert.ok(senior.includes('acme-senior-product-designer-1') && senior.includes('beta-product-designer-2') && senior.includes('epsilon-ux-designer-5'));
 });

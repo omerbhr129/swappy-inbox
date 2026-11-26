@@ -19,9 +19,15 @@ function wordsMatch(a, b) {
   return a.startsWith(b) || b.startsWith(a);
 }
 
+// Level words say how senior, not what the job is: "Senior Product Designer" must not match "Senior Product Manager"
+// on "senior" (the level is weighed separately, below and by the model).
+const LEVEL = new Set(['senior', 'sr', 'sr.', 'junior', 'jr', 'jr.', 'staff', 'principal', 'lead', 'entry', 'mid']);
+
+/** How much of a wanted title a job title has. Its last word is the job itself (designer, engineer, nurse): without it, 0. */
 function phraseScore(phrase, titleWords) {
-  const words = tokenize(phrase).filter((w) => !STOP.has(w));
+  const words = tokenize(phrase).filter((w) => !STOP.has(w) && !LEVEL.has(w));
   if (!words.length) return 0;
+  if (!titleWords.some((t) => wordsMatch(words[words.length - 1], t))) return 0;
   const hit = words.filter((w) => titleWords.some((t) => wordsMatch(w, t))).length;
   return hit / words.length;
 }
