@@ -69,7 +69,10 @@ const server = createServer((req, res) => {
 
 server.listen(config.port, () => {
   console.log(`swappy listening on :${config.port} as ${config.inboxId}`);
-  look('boot'); // anything that arrived while the Sprite slept
+  morning('boot').finally(() => look('boot')); // anything due or arrived while the Sprite slept
 });
-// While awake, a look every two minutes in case a webhook was missed. Asleep, nothing runs and nothing is billed.
-setInterval(() => look('timer'), 2 * 60 * 1000).unref();
+// While awake, every two minutes: the morning matches if they are due (from 13:00 UTC, once a day per person, so this
+// is safe to repeat and does not depend on the outside nudge arriving), then a look in case a webhook was missed.
+// Asleep, nothing runs and nothing is billed.
+const morning = (why) => agent.digest().then((r) => { if (r?.sent) console.log('digest', why, r); }).catch((e) => console.error('digest failed', String(e?.message ?? e)));
+setInterval(() => morning('timer').finally(() => look('timer')), 2 * 60 * 1000).unref();
